@@ -14,6 +14,7 @@ import urllib
 import base64
 import rijndael
 import json
+import urlparse
 
 KEY_SIZE = 16
 BLOCK_SIZE = 32
@@ -60,6 +61,9 @@ class PHPIPAM:
         self.url = url
         self.api_id = api_id
         self.api_key = api_key
+        
+        self.scheme = 'http'
+        self.path   = '/api/index.php'
 
     def query_phpipam(self, **kwargs):
         """Query PHPIPAM API
@@ -82,15 +86,27 @@ class PHPIPAM:
         data.update(kwargs)
         params = urllib.urlencode(data)
 
-        headers = {"Content-type": "application/x-www-form-urlencoded", "Accept": "text/plain"}
-        conn = httplib.HTTPConnection(self.url)
-        conn.request("POST", "/api/index.php", params, headers)
+        headers = {"Content-type": "application/x-www-form-urlencoded", "Accept": "text/plain"}        
+        
+        if self.scheme == 'https':
+            conn = httplib.HTTPSConnection(self.url)           
+        else:
+            conn = httplib.HTTPConnection(self.url)    
+                
+        conn.request("POST", self.path, params, headers)        
         response = conn.getresponse()
-
-        data = response.read()
-        conn.close()  
-
-        return data            
+        
+        if response.status in (301,302,):            
+            url_parts   = urlparse.urlsplit(response.getheader('location', ''))
+            self.scheme = url_parts.scheme
+            self.url    = url_parts.netloc
+            self.path   = url_parts.path
+            conn.close()
+            return self.query_phpipam(**kwargs)            
+        else:
+            data = response.read()
+            conn.close()
+            return data            
 
     def generic(self, controller, action, **kwargs):
         """Query PHPIPAM 
